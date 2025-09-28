@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Scorebug – Connected Banners with Smooth Slide</title>
+<style>
+  :root{
+    --shu-bright:#d12d2d;
+    --shu-dark:#a32020;
+    --pro-silver:#c0c0c0;
+    --pro-dark:#8d8d8d;
+  }
+  body{margin:0;background:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:white;}
+
+  /* ===== Scoreboard (constant bar shadow) ===== */
+  .scorebug{
+    position:fixed; top:16px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:flex-start; border-radius:2px; overflow:visible;
+    box-shadow:0 4px 8px rgba(0,0,0,.55); z-index:1;
+  }
+
+  .team-stack{display:flex; flex-direction:column; align-items:stretch; position:relative;}
+  .team-row{display:flex; height:30px;}
+
+  .cell{display:flex; align-items:center; justify-content:center; padding:0 8px; height:30px;}
+  .sep{width:1px; background:rgba(0,0,0,.15);}
+
+  .team{
+    font-weight:900; letter-spacing:.5px; min-width:63px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #teamA{background:linear-gradient(180deg,var(--shu-bright) 0%, #b82020 100%);}
+  #teamB{background:linear-gradient(180deg,var(--pro-silver) 0%, #a0a0a0 100%); color:black;}
+  .team .score{font-weight:900; font-size:22px; margin-left:6px; transition:transform .25s ease, opacity .25s ease;}
+
+  .shots{
+    width:33px; height:30px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800;
+  }
+  #shotsA{background:linear-gradient(180deg,var(--shu-dark) 0%, #8b1a1a 100%); color:white;}
+  #shotsB{background:linear-gradient(180deg,var(--pro-dark) 0%, #6f6f6f 100%); color:white;}
+  .shots .lbl{font-size:7px; line-height:6px; opacity:.9;}
+  .shots .val{font-size:18px; line-height:15px; font-weight:900; margin-top:2px; transition:transform .25s ease, opacity .25s ease;}
+
+  /* Clock */
+  .clock{
+    background:linear-gradient(180deg,#fff 0%, #ddd 100%); color:#111;
+    width:122px; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:1000;
+  }
+  .clock .time{font-size:18px; font-weight:900; min-width:60px; text-align:center;}
+
+  .pop{transform:scale(1.3); opacity:0.6;}
+
+  /* ===== Team Status Banners (slide from scorebug bottom) ===== */
+  .status-banner{
+    position:absolute; top:30px; left:0; width:100%; height:20px;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:11px; letter-spacing:1px; color:white;
+    border-radius:0 0 2px 2px; box-shadow:0 3px 6px rgba(0,0,0,.4);
+
+    /* animation base state (hidden just behind the bar) */
+    opacity:0; visibility:hidden; transform:translateY(-20px);
+    transition:
+      transform .28s ease,
+      opacity .28s ease,
+      visibility 0s linear .28s; /* hide visibility AFTER slide-up completes */
+  }
+  .status-banner.show{
+    opacity:1; visibility:visible; transform:translateY(0);
+    transition:
+      transform .28s ease,
+      opacity .28s ease,
+      visibility 0s; /* visible immediately on slide-down */
+  }
+
+  /* ===== Goal Banner (stretches across entire scorebug) ===== */
+  #goalBanner{
+    position:absolute; top:0; left:0; height:30px; width:100%;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:2px; box-shadow:0 3px 10px rgba(0,0,0,.55);
+    transform:scaleX(0); transform-origin:left center; opacity:0;
+    transition:transform .5s ease, opacity .5s ease; z-index:2;
+    padding:0 16px; color:white; font-size:20px; font-weight:900; letter-spacing:3px; white-space:nowrap;
+  }
+  #goalBanner.show{transform:scaleX(1); opacity:1;}
+
+  /* ===== Control Panel ===== */
+  #controls{
+    position:fixed; top:16px; right:16px; bottom:16px;
+    background:linear-gradient(180deg,#444 0%, #222 100%); padding:12px; border-radius:6px;
+    box-shadow:0 3px 8px rgba(0,0,0,.5); width:300px; display:flex; flex-direction:column; gap:8px; overflow:auto;
+  }
+  #controls label{font-weight:bold;}
+  #controls select,#controls input[type=text]{width:100%; padding:4px; border:none; border-radius:4px; background:#555; color:white;}
+  .button-row{display:flex; flex-wrap:wrap; gap:4px;}
+  .button-row button{flex:1; padding:6px; border:none; border-radius:4px; background:linear-gradient(180deg,#666 0%, #444 100%); color:white; font-weight:bold; cursor:pointer;}
+  .button-row button:hover{background:linear-gradient(180deg,#777 0%, #555 100%);}
+</style>
+</head>
+<body>
+
+<!-- Scoreboard -->
+<div class="scorebug" id="scoreboard">
+
+  <!-- Team A -->
+  <div class="team-stack">
+    <div class="team-row">
+      <div class="team cell" id="teamA">
+        <span id="nameA">SHU</span>
+        <span class="score" id="scoreA">0</span>
+      </div>
+      <div class="shots cell" id="shotsA">
+        <span class="lbl">SHOTS</span>
+        <span class="val" id="shotsValA">0</span>
+      </div>
+    </div>
+    <div class="status-banner" id="statusA"></div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Team B -->
+  <div class="team-stack">
+    <div class="team-row">
+      <div class="team cell" id="teamB">
+        <span id="nameB">PRO</span>
+        <span class="score" id="scoreB">0</span>
+      </div>
+      <div class="shots cell" id="shotsB">
+        <span class="lbl">SHOTS</span>
+        <span class="val" id="shotsValB">0</span>
+      </div>
+    </div>
+    <div class="status-banner" id="statusB"></div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Clock -->
+  <div class="clock cell">
+    <span id="period">1ST</span>
+    <span class="time" id="clock">20:00</span>
+  </div>
+
+  <!-- Goal Banner -->
+  <div id="goalBanner"></div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <h3>Instant Controls</h3>
+
+  <label>Team A</label>
+  <select id="selectA" onchange="setTeam('A', this.value)">
+    <option value="SHU">SHU</option>
+    <option value="PRO">PRO</option>
+  </select>
+  <div class="button-row">
+    <button onclick="changeScore('A',1)">+ Goal</button>
+    <button onclick="changeScore('A',-1)">- Goal</button>
+    <button onclick="changeShots('A',1)">+ Shot</button>
+    <button onclick="changeShots('A',-1)">- Shot</button>
+  </div>
+  <div class="button-row">
+    <button onclick="toggleStatus('A','PP')">Power Play</button>
+    <button onclick="toggleStatus('A','TIMEOUT')">Timeout</button>
+    <button onclick="toggleStatus('A','EMPTY NET')">Empty Net</button>
+  </div>
+
+  <label>Team B</label>
+  <select id="selectB" onchange="setTeam('B', this.value)">
+    <option value="PRO">PRO</option>
+    <option value="SHU">SHU</option>
+  </select>
+  <div class="button-row">
+    <button onclick="changeScore('B',1)">+ Goal</button>
+    <button onclick="changeScore('B',-1)">- Goal</button>
+    <button onclick="changeShots('B',1)">+ Shot</button>
+    <button onclick="changeShots('B',-1)">- Shot</button>
+  </div>
+  <div class="button-row">
+    <button onclick="toggleStatus('B','PP')">Power Play</button>
+    <button onclick="toggleStatus('B','TIMEOUT')">Timeout</button>
+    <button onclick="toggleStatus('B','EMPTY NET')">Empty Net</button>
+  </div>
+
+  <label>Period</label>
+  <select id="periodSelect" onchange="setPeriod(this.value)">
+    <option value="1ST">1ST</option>
+    <option value="2ND">2ND</option>
+    <option value="3RD">3RD</option>
+    <option value="OT">OT</option>
+  </select>
+
+  <label>Clock Controls</label>
+  <input type="text" id="clockInput" value="20:00" oninput="setClock(this.value)">
+  <div class="button-row">
+    <button onclick="startClock()">Start</button>
+    <button onclick="stopClock()">Stop</button>
+    <button onclick="resetClock()">Reset</button>
+  </div>
+</div>
+
+<script>
+const data = {
+  A:{team:'SHU',score:0,shots:0,status:'',ppSeconds:0},
+  B:{team:'PRO',score:0,shots:0,status:'',ppSeconds:0}
+};
+let clockInterval = null;
+let clockSeconds = 20*60;
+
+function setTeam(side,name){
+  data[side].team = name;
+  document.getElementById('name'+side).textContent = name;
+}
+
+function setPeriod(p){ document.getElementById('period').textContent = p; }
+
+function setClock(c){
+  const [m,s] = c.split(':').map(Number);
+  clockSeconds = m*60 + s;
+  updateClockDisplay();
+}
+
+function updateClockDisplay(){
+  const m = Math.floor(clockSeconds/60);
+  const s = (clockSeconds%60).toString().padStart(2,'0');
+  const mDisplay = m >= 10 ? m.toString().padStart(2,'0') : m.toString();
+  document.getElementById('clock').textContent = `${mDisplay}:${s}`;
+}
+
+function startClock(){
+  if (clockInterval) return;
+  clockInterval = setInterval(()=>{
+    if (clockSeconds>0){
+      clockSeconds--;
+      updateClockDisplay();
+      // decrement any running power plays
+      ['A','B'].forEach(side=>{
+        if (data[side].status==='PP' && data[side].ppSeconds>0){
+          data[side].ppSeconds--;
+          updatePowerPlayDisplay(side);
+        }
+      });
+    } else {
+      stopClock();
+    }
+  },1000);
+}
+
+function stopClock(){ clearInterval(clockInterval); clockInterval = null; }
+
+function resetClock(){
+  const input = document.getElementById('clockInput').value;
+  setClock(input);
+  stopClock();
+}
+
+function changeScore(side, delta){
+  const wasIncrease = delta > 0;
+  data[side].score = Math.max(0, data[side].score + delta);
+  animateNumber('score'+side, data[side].score);
+  if (wasIncrease) showGoalBanner(side);
+}
+
+function changeShots(side, delta){
+  data[side].shots = Math.max(0, data[side].shots + delta);
+  animateNumber('shotsVal'+side, data[side].shots);
+}
+
+function animateNumber(id, value){
+  const el = document.getElementById(id);
+  el.textContent = value;
+  el.classList.add('pop');
+  setTimeout(()=>el.classList.remove('pop'),250);
+}
+
+function showGoalBanner(side){
+  const banner = document.getElementById('goalBanner');
+  const teamName = data[side].team;
+  const baseColor = side === 'A' ? 'var(--shu-bright)' : 'var(--pro-silver)';
+  banner.textContent = teamName + " GOAL";
+  banner.style.background = `linear-gradient(180deg, ${baseColor} 0%, ${baseColor} 100%)`;
+  banner.classList.add('show');
+  setTimeout(()=> banner.classList.remove('show'), 2500);
+}
+
+/* === Banners === */
+function toggleStatus(side,type){
+  const statusEl = document.getElementById('status'+side);
+  const baseColor = side==='A' ? 'var(--shu-bright)' : 'var(--pro-silver)';
+
+  // if same type is already active, hide it
+  if (data[side].status === type) {
+    statusEl.classList.remove('show');
+    data[side].status = '';
+    data[side].ppSeconds = 0;
+    return;
+  }
+
+  data[side].status = type;
+  statusEl.style.background = `linear-gradient(180deg, ${baseColor} 0%, ${baseColor} 100%)`;
+  statusEl.classList.add('show');
+
+  if (type === 'PP') {
+    data[side].ppSeconds = 120; // 2:00
+    updatePowerPlayDisplay(side);
+  } else {
+    statusEl.textContent = type; // TIMEOUT / EMPTY NET
+    data[side].ppSeconds = 0;
+  }
+}
+
+function updatePowerPlayDisplay(side){
+  const statusEl = document.getElementById('status'+side);
+  const secs = data[side].ppSeconds;
+  if (secs > 0) {
+    const m = Math.floor(secs/60);
+    const s = (secs%60).toString().padStart(2,'0');
+    statusEl.textContent = `PP: ${m}:${s}`;
+  } else {
+    statusEl.classList.remove('show');
+    data[side].status = '';
+  }
+}
+
+updateClockDisplay();
+</script>
+
+</body>
+</html>
